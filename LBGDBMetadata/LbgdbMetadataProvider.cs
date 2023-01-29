@@ -5,7 +5,6 @@ using System.Linq;
 using LBGDBMetadata.Extensions;
 using LBGDBMetadata.LaunchBox;
 using LBGDBMetadata.LaunchBox.Metadata;
-using Playnite.SDK.Metadata;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using SixLabors.ImageSharp;
@@ -21,14 +20,14 @@ namespace LBGDBMetadata
         private readonly LbgdbMetadataPlugin _plugin;
         private Game _game;
         private Dictionary<string, int> _regionPriority = new Dictionary<string, int>();
-        
+
         public LbgdbMetadataProvider(MetadataRequestOptions options, LbgdbMetadataPlugin plugin)
         {
             _options = options;
             _plugin = plugin;
         }
 
-        private int GetWeightedRating(double communityRatingCount, double communityRating )
+        private int GetWeightedRating(double communityRatingCount, double communityRating)
         {
             double positiveVotes = Math.Floor((communityRating / 100) * communityRatingCount);
             double negativeVotes = communityRatingCount - positiveVotes;
@@ -36,7 +35,7 @@ namespace LBGDBMetadata
             double totalVotes = positiveVotes + negativeVotes;
             double average = totalVotes < 1 ? 0 : positiveVotes / totalVotes;
             double score = average - (average - 0.5) * Math.Pow(2, -Math.Log10(totalVotes + 1));
-            
+
             return (int)(score * 100);
         }
 
@@ -83,15 +82,15 @@ namespace LBGDBMetadata
                 {
                     if (_options?.GameData != null && _regionPriority.Count < 1)
                     {
-                        if (_options.GameData.Region != null && !string.IsNullOrWhiteSpace(_options.GameData.Region.Name))
+                        if (_options.GameData.Regions != null && _options.GameData.Regions.Count != 0)
                         {
-                            _regionPriority = _options.GameData.Region.Name.GetRegionPriorityList();
+                            _regionPriority = _options.GameData.GetRegionPriorityList();
                         }
                         else
                         {
-                            if (!string.IsNullOrWhiteSpace(_options.GameData.GameImagePath))
+                            if (!string.IsNullOrWhiteSpace(_options.GameData.CoverImage))
                             {
-                                var noIntoRegion = _options.GameData.GameImagePath.GetRegionNoIntro();
+                                var noIntoRegion = _options.GameData.CoverImage.GetRegionNoIntro();
                                 if (!string.IsNullOrWhiteSpace(noIntoRegion))
                                 {
                                     _regionPriority = noIntoRegion.GetRegionPriorityList();
@@ -101,14 +100,15 @@ namespace LBGDBMetadata
                     }
 
                     var platformSearchName = "";
-                    if (!string.IsNullOrWhiteSpace(_options?.GameData?.Platform?.Name))
+                    var platformName = _options?.GameData?.Platforms?.FirstOrDefault().Name;
+                    if (!string.IsNullOrWhiteSpace(platformName))
                     {
-                        var sanitizedPlatform = _options.GameData.Platform.Name.Sanitize();
+                        var sanitizedPlatform = platformName.Sanitize();
                         platformSearchName = _plugin.PlatformTranslationTable.ContainsKey(sanitizedPlatform)
                             ? _plugin.PlatformTranslationTable[sanitizedPlatform]
                             : sanitizedPlatform;
                     }
-                    
+
                     using (var context = new MetaDataContext(_plugin.GetPluginUserDataPath()))
                     {
                         /* Can't tell which region the actual game name is from in the game object...
@@ -180,18 +180,18 @@ namespace LBGDBMetadata
 
                     if (_game != null && _regionPriority.Count < 1)
                     {
-                        _regionPriority = LaunchBox.Region.GetRegionPriorityList(null);
+                        _regionPriority = LaunchBox.Region.GetRegionPriorityList((string)null);
                     }
                 }
             }
-            
+
             return _game;
         }
 
-        public override string GetName()
+        public override string GetName(GetMetadataFieldArgs args)
         {
             var game = GetGame();
-            
+
             if (game != null)
             {
                 if (!string.IsNullOrWhiteSpace(game.Name))
@@ -199,11 +199,11 @@ namespace LBGDBMetadata
                     return game.Name;
                 }
             }
-            
-            return base.GetName();
+
+            return base.GetName(args);
         }
 
-        public override List<string> GetGenres()
+        public override IEnumerable<MetadataProperty> GetGenres(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -211,26 +211,26 @@ namespace LBGDBMetadata
             {
                 if (!string.IsNullOrWhiteSpace(game.Genres))
                 {
-                    return game.Genres.Split(';').Select(genre => genre.Trim()).OrderBy(genre => genre.Trim()).ToList();
+                    return game.Genres.Split(';').Select(g => new MetadataNameProperty(g.Trim())).OrderBy(genre => genre.Name);
                 }
             }
 
-            return base.GetGenres();
+            return base.GetGenres(args);
         }
 
-        public override DateTime? GetReleaseDate()
+        public override ReleaseDate? GetReleaseDate(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
             if (game?.ReleaseDate != null)
             {
-                return game.ReleaseDate;
+                return new ReleaseDate(game.ReleaseDate.Value);
             }
 
-            return base.GetReleaseDate();
+            return base.GetReleaseDate(args);
         }
 
-        public override List<string> GetDevelopers()
+        public override IEnumerable<MetadataProperty> GetDevelopers(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -238,14 +238,14 @@ namespace LBGDBMetadata
             {
                 if (!string.IsNullOrWhiteSpace(game.Developer))
                 {
-                    return game.Developer.Split(';').Select(developer => developer.Trim()).OrderBy(developer => developer.Trim()).ToList();
+                    return game.Developer.Split(';').Select(d => new MetadataNameProperty(d.Trim())).OrderBy(developer => developer);
                 }
             }
 
-            return base.GetDevelopers();
+            return base.GetDevelopers(args);
         }
 
-        public override List<string> GetPublishers()
+        public override IEnumerable<MetadataProperty> GetPublishers(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -253,15 +253,15 @@ namespace LBGDBMetadata
             {
                 if (!string.IsNullOrWhiteSpace(game.Publisher))
                 {
-                    return game.Publisher.Split(';').Select(publisher => publisher.Trim()).OrderBy(publisher => publisher.Trim()).ToList();
+                    return game.Publisher.Split(';').Select(p => new MetadataNameProperty(p.Trim())).OrderBy(p => p);
                 }
             }
 
-            return base.GetPublishers();
+            return base.GetPublishers(args);
         }
 
 
-        public override string GetDescription()
+        public override string GetDescription(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -273,10 +273,10 @@ namespace LBGDBMetadata
                 }
             }
 
-            return base.GetDescription();
+            return base.GetDescription(args);
         }
 
-        public override int? GetCommunityScore()
+        public override int? GetCommunityScore(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -288,13 +288,13 @@ namespace LBGDBMetadata
                 }
             }
 
-            return base.GetCommunityScore();
+            return base.GetCommunityScore(args);
         }
 
-        public override MetadataFile GetCoverImage()
+        public override MetadataFile GetCoverImage(GetMetadataFieldArgs args)
         {
             var game = GetGame();
-            
+
             if (game != null)
             {
                 using (var context = new MetaDataContext(_plugin.GetPluginUserDataPath()))
@@ -307,10 +307,10 @@ namespace LBGDBMetadata
                 }
             }
 
-            return base.GetCoverImage();
+            return base.GetCoverImage(args);
         }
 
-        public override MetadataFile GetBackgroundImage()
+        public override MetadataFile GetBackgroundImage(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -324,12 +324,12 @@ namespace LBGDBMetadata
                         return new MetadataFile("https://images.launchbox-app.com/" + backgroundImage.FileName);
                     }
                 }
-            }       
+            }
 
-            return base.GetBackgroundImage();
+            return base.GetBackgroundImage(args);
         }
 
-        public override List<Link> GetLinks()
+        public override IEnumerable<Link> GetLinks(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -353,12 +353,7 @@ namespace LBGDBMetadata
                 return links;
             }
 
-            return base.GetLinks();
-        }
-
-        public override List<string> GetFeatures()
-        {
-            return base.GetFeatures();
+            return base.GetLinks(args);
         }
 
         public override List<MetadataField> AvailableFields
@@ -369,7 +364,7 @@ namespace LBGDBMetadata
             }
         }
 
-        public override MetadataFile GetIcon()
+        public override MetadataFile GetIcon(GetMetadataFieldArgs args)
         {
             var game = GetGame();
 
@@ -408,17 +403,7 @@ namespace LBGDBMetadata
                 }
             }
 
-            return base.GetIcon();
-        }
-
-        public override int? GetCriticScore()
-        {
-            return base.GetCriticScore();
-        }
-
-        public override List<string> GetTags()
-        {
-            return base.GetTags();
+            return base.GetIcon(args);
         }
     }
 }

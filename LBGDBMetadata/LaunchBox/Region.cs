@@ -66,20 +66,30 @@ namespace LBGDBMetadata.LaunchBox
             return regionList;
         }
 
+        public static Dictionary<string, int> GetRegionPriorityList(this Playnite.SDK.Models.Game game)
+        {
+            return game.Regions.Select(r => r.Name).GetRegionPriorityList();
+        }
+
         public static Dictionary<string, int> GetRegionPriorityList(this string region)
         {
+            return new[] { region }.GetRegionPriorityList();
+        }
+
+        public static Dictionary<string, int> GetRegionPriorityList(this IEnumerable<string> regions)
+        {
             Dictionary<string, int> regionPriorityList = new Dictionary<string, int>();
-            if (string.IsNullOrWhiteSpace(region))
+            var rl = regions?.Distinct().ToList();
+            if (rl == null || rl.Count == 0)
             {
                 GetRegionPriority("canada", regionPriorityList);
                 GetRegionPriority("usa", regionPriorityList);
             }
             else
             {
-                var splitRegions = region.Split(',').Select(item => item.Sanitize()).Where(item => !string.IsNullOrWhiteSpace(item)).Distinct();
-                foreach (var splitRegion in splitRegions)
+                foreach (var r in regions)
                 {
-                    GetRegionPriority(splitRegion, regionPriorityList);
+                    GetRegionPriority(r, regionPriorityList);
                 }
             }
             
